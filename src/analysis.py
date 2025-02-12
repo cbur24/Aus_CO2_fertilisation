@@ -47,7 +47,8 @@ def _preprocess(d, dd, ss):
     ss = ss.where(~nan_mask)
     
     ### --------Aggregate to annual sums--------
-    d = d - ss #remove soil signal
+    if d.name=='NDVI':
+        d = d - ss #remove soil signal
     d = d.groupby('time.year').sum()
     d = d.where(~nan_mask) #remask after summing
     
@@ -131,7 +132,7 @@ def robust_trends(ds):
     
     lat = ds.latitude.item()
     lon = ds.longitude.item()
-    out_ds.assign_coords(longitude=lon, latitude=lat)
+    # out_ds.assign_coords(longitude=lon, latitude=lat)
     out_ds = out_ds.expand_dims(longitude=[lon], latitude=[lat])
     return out_ds
 
@@ -146,7 +147,7 @@ def regression_attribution(
     modelling_vars=['srad','co2','rain','tavg','vpd']
 ):
     """
-    Attribute trends in NDVI to using regression models
+    Attribute trends in NDVI/GPP using regression models
     
     returns:
     --------
@@ -303,7 +304,7 @@ def calculate_beta(
 ):
     """
     Following Zhan et al. (2024):
-    https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2023JG007910)
+    https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2023JG007910
 
     Steps:
     1. Detrend NDVI, add back median value.
@@ -357,7 +358,7 @@ def calculate_beta(
     
         #step 5
         df[model_var+'_residual'] = df[model_var] - df[model_var+'_predict']
-        df[model_var+'_residual_percent'] = df[model_var+'_residual']/df[model_var][0:5].mean()
+        df[model_var+'_residual_percent'] = df[model_var+'_residual']/df[model_var][0:3].mean()
     
         #step 6
         #find robust regression slope

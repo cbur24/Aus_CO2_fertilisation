@@ -28,12 +28,12 @@ sys.path.append('/g/data/os22/chad_tmp/AusEFlux/src/')
 from _utils import round_coords
 
 ## !!!!!----variables for script-------!!!!!!!!!!
-n_workers=52
-memory_limit='240GiB'
+n_workers=102
+memory_limit='300GiB'
 modelling_vars=['co2', 'srad', 'rain', 'tavg', 'vpd']
-results_path = '/g/data/os22/chad_tmp/Aus_CO2_fertilisation/results/tiles/'
+results_path = '/g/data/os22/chad_tmp/Aus_CO2_fertilisation/results/tiles/AusEFlux_GPP/'
 template_path='/g/data/os22/chad_tmp/Aus_CO2_fertilisation/data/templates/'
-model_var='NDVI'
+model_var='GPP' #NDVI GPP
 model_types = ['delta_slope', 'PLS', 'ML']
 # ------------------------------------------------
 
@@ -51,11 +51,11 @@ def attribution_etal(
     print('Working on tile', n)
 
     #open data
-    d_path = f'/g/data/os22/chad_tmp/Aus_CO2_fertilisation/data/tiles/NDVI_{n}.nc'
+    d_path = f'/g/data/os22/chad_tmp/Aus_CO2_fertilisation/data/tiles/{model_var}_{n}.nc'
     dd_path = f'/g/data/os22/chad_tmp/Aus_CO2_fertilisation/data/tiles/COVARS_{n}.nc'
     ss_path = f'/g/data/os22/chad_tmp/Aus_CO2_fertilisation/data/tiles/SS_{n}.nc'
 
-    d = assign_crs(xr.open_dataset(d_path)['NDVI'], crs='epsg:4326')
+    d = assign_crs(xr.open_dataset(d_path)[model_var], crs='epsg:4326')
     dd = assign_crs(xr.open_dataset(dd_path), crs='epsg:4326')
     ss = assign_crs(xr.open_dataset(ss_path)['NDVI'], crs='epsg:4326')
     ss.name = 'NDVI'
@@ -65,7 +65,7 @@ def attribution_etal(
     d, dd, ss, Y, idx_all_nan, nan_mask, shape = _preprocess(d, dd, ss)
 
     ## ----Find the trends in annually summed NDVI/GPP--------------
-    if os.path.exists(f'{results_path}NDVI_trends_perpixel_{n}.nc'):
+    if os.path.exists(f'{results_path}{model_var}_trends_perpixel_{n}.nc'):
         pass
     else:
         results=[]
@@ -98,7 +98,31 @@ def attribution_etal(
         trends = xr.combine_by_coords(trends, coords='minimal').astype('float32')
         # assign crs and export
         trends = assign_crs(trends, crs='EPSG:4326')
-        trends.to_netcdf(f'{results_path}NDVI_trends_perpixel_{n}.nc')
+        trends.transpose().to_netcdf(f'{results_path}{model_var}_trends_perpixel_{n}.nc')
+
+    # -----calculate CO2 beta coefficients iterate-------------------------------
+    if os.path.exists(f'{results_path}beta_coefficient_perpixel_{n}.nc'):
+        pass
+    
+    else:
+        beta = []    
+        for i in range(shape[1]): #loop through all spatial indexes.
+            #select pixel
+            data = Y.isel(spatial=i)
+            
+            lat = data.latitude.item()
+            lon = data.longitude.item()
+            
+            fi = calculate_beta(data,
+                               X=dd.sel(latitude=lat, longitude=lon),
+                               model_var=model_var,
+                               modelling_vars=modelling_vars,
+                              )
+            beta.append(fi)
+        
+        beta = dask.compute(beta)[0]
+        beta = xr.combine_by_coords(beta).astype('float32')
+        beta.to_netcdf(f'{results_path}beta_coefficient_perpixel_{n}.nc')
 
     # -----regression attribution iterate-------------------------------
     for model_type in model_types: 
@@ -130,30 +154,6 @@ def attribution_etal(
             p_attribution = xr.combine_by_coords(p_attribution).astype('float32')
             p_attribution.to_netcdf(f'{results_path}attribution_{model_type}_perpixel_{n}.nc')
 
-     # -----calculate CO2 beta coefficients iterate-------------------------------
-    if os.path.exists(f'{results_path}beta_coefficient_perpixel_{n}.nc'):
-        pass
-    
-    else:
-        beta = []    
-        for i in range(shape[1]): #loop through all spatial indexes.
-            #select pixel
-            data = Y.isel(spatial=i)
-            
-            lat = data.latitude.item()
-            lon = data.longitude.item()
-            
-            fi = calculate_beta(data,
-                               X=dd.sel(latitude=lat, longitude=lon),
-                               model_var=model_var,
-                               modelling_vars=modelling_vars,
-                              )
-            beta.append(fi)
-        
-        beta = dask.compute(beta)[0]
-        beta = xr.combine_by_coords(beta).astype('float32')
-        beta.to_netcdf(f'{results_path}beta_coefficient_perpixel_{n}.nc')
-        
 
 #run function
 if __name__ == '__main__':
