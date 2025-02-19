@@ -30,10 +30,10 @@ from _utils import round_coords
 ## !!!!!----variables for script-------!!!!!!!!!!
 n_workers=102
 memory_limit='300GiB'
-modelling_vars=['co2', 'srad', 'rain', 'tavg', 'vpd']
-results_path = '/g/data/os22/chad_tmp/Aus_CO2_fertilisation/results/tiles/AusEFlux_GPP/'
+modelling_vars=['co2', 'srad', 'rain', 'tavg', 'vpd', 'cwd']
+results_path = '/g/data/os22/chad_tmp/Aus_CO2_fertilisation/results/tiles/NDVI_1982_2022/'
 template_path='/g/data/os22/chad_tmp/Aus_CO2_fertilisation/data/templates/'
-model_var='GPP' #NDVI GPP
+model_var='NDVI' #NDVI GPP
 model_types = ['delta_slope', 'PLS', 'ML']
 # ------------------------------------------------
 
@@ -153,7 +153,6 @@ def attribution_etal(
             p_attribution = dask.compute(p_attribution)[0]
             p_attribution = xr.combine_by_coords(p_attribution).astype('float32')
             p_attribution.to_netcdf(f'{results_path}attribution_{model_type}_perpixel_{n}.nc')
-
 
 #run function
 if __name__ == '__main__':

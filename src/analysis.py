@@ -37,7 +37,7 @@ def _preprocess(d, dd, ss):
     """
     ### --------Find NaNs---------
     ndvi_nan_mask = np.isnan(d).sum('time') >= len(d.time) / 10
-    clim_nan_mask = dd[['rain','vpd','tavg','srad']].to_array().isnull().any('variable')
+    clim_nan_mask = dd[['rain','vpd','tavg','srad', 'cwd']].to_array().isnull().any('variable')
     clim_nan_mask = (clim_nan_mask.sum('time')>0)
     soil_nan_mask = np.isnan(ss)
     nan_mask = (clim_nan_mask | ndvi_nan_mask | soil_nan_mask)
@@ -143,8 +143,8 @@ def regression_attribution(
     template,
     model_var='NDVI',
     model_type='PLS',
-    rolling=5,
-    modelling_vars=['srad','co2','rain','tavg','vpd']
+    rolling=3,
+    modelling_vars=['srad','co2','rain','tavg','vpd','cwd']
 ):
     """
     Attribute trends in NDVI/GPP using regression models
@@ -178,7 +178,9 @@ def regression_attribution(
         
         #--------------- modelling---------------------------------------------------
         # fit rolling annuals to remove some of the IAV (controllable)
-        df = X.rolling(year=rolling, min_periods=rolling).mean().to_dataframe().dropna()
+        # df = X.rolling(year=rolling, min_periods=rolling).mean().to_dataframe().dropna()
+        X['year'] = [datetime.strptime(f'{int(y)} 1', '%Y %j') for y in X['year']]
+        df = X.resample(year=f'{rolling}YE').mean().to_dataframe().dropna()
 
         #fit a model with all vars
         x = df[modelling_vars]
@@ -300,7 +302,7 @@ def calculate_beta(
     target,
     X,
     model_var='NDVI',
-    modelling_vars=['srad','co2','rain','tavg','vpd']
+    modelling_vars=['srad','co2','rain','tavg','vpd','cwd']
 ):
     """
     Following Zhan et al. (2024):
@@ -308,7 +310,7 @@ def calculate_beta(
 
     Steps:
     1. Detrend NDVI, add back median value.
-    2. Detrend climate variables (T, VPD, rainf, SW), add back median value.
+    2. Detrend climate variables (T, VPD, rain, SW, CWD), add back median value.
     3. Train model: NDVI-detrend = f(climate detrend)
     4. Predict NDVI with original climate data using model
     5. NDVI residual = Actual NDVI - predicted NDVI
@@ -377,9 +379,7 @@ def calculate_beta(
 
 
 
-# this code for resampling time rather than rolling means
-# df['time'] = [datetime.strptime(f'{int(y)} {int(doy)}', '%Y %j') for y,doy in zip(df['POS_year'], df['POS'])]
-# df = df.set_index('time').resample('3YE').mean()
+
 
 
 

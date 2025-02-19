@@ -6,6 +6,7 @@ results/figs
 *.xml
 *.nc
 *.joblib
+*.csv
 data/
 envs/
 __pycache__
