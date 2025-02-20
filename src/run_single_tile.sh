@@ -5,7 +5,7 @@
 #PBS -l ncpus=102
 #PBS -l mem=400gb
 #PBS -l jobfs=700MB
-#PBS -l walltime=07:00:00
+#PBS -l walltime=12:00:00
 #PBS -l storage=gdata/os22+gdata/xc0+gdata/er8
  
 module load python3/3.10.0
