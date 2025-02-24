@@ -31,9 +31,9 @@ from _utils import round_coords
 n_workers=102
 memory_limit='300GiB'
 modelling_vars=['co2', 'srad', 'rain', 'tavg', 'vpd', 'cwd']
-results_path = '/g/data/os22/chad_tmp/Aus_CO2_fertilisation/results/tiles/NDVI_1982_2022/'
+results_path = '/g/data/os22/chad_tmp/Aus_CO2_fertilisation/results/tiles/AusEFlux_GPP_1982_2022/'
 template_path='/g/data/os22/chad_tmp/Aus_CO2_fertilisation/data/templates/'
-model_var='NDVI' #NDVI GPP
+model_var='GPP' #NDVI GPP
 model_types = ['delta_slope', 'PLS', 'ML']
 # ------------------------------------------------
 
