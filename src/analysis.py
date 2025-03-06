@@ -22,6 +22,8 @@ from collections import namedtuple
 
 from sklearn.metrics import r2_score
 from sklearn.ensemble import RandomForestRegressor
+import lightgbm as lgbm
+from lightgbm import LGBMRegressor
 from sklearn.cross_decomposition import PLSRegression
 from scipy.stats import theilslopes, kendalltau
 
@@ -48,7 +50,11 @@ def _preprocess(d, dd, ss):
     
     ### --------Aggregate to annual sums--------
     if d.name=='NDVI':
-        d = d - ss #remove soil signal
+        #first convert to fPAR
+        d = (0.95*(d - ss)) / (0.91 - ss)
+        d = xr.where(d<0, 0, d)
+        d = xr.where(d>1, 1, d)
+        
     d = d.groupby('time.year').sum()
     d = d.where(~nan_mask) #remask after summing
     
@@ -143,7 +149,8 @@ def regression_attribution(
     template,
     model_var='NDVI',
     model_type='PLS',
-    rolling=3,
+    rolling=5,
+    detrend_data=False,
     modelling_vars=['srad','co2','rain','tavg','vpd','cwd']
 ):
     """
@@ -168,30 +175,35 @@ def regression_attribution(
         lon = target.longitude.item()
 
         # summarise climate data.
-        co2 = X['co2'].groupby('time.year').mean()
         rain = X['rain'].groupby('time.year').sum()
-        X = X.drop_vars(['rain', 'co2']).groupby('time.year').mean()
-        X = xr.merge([co2.to_dataset(), rain.to_dataset(), X])
+        X = X.drop_vars(['rain']).groupby('time.year').mean()
+        X = xr.merge([rain.to_dataset(), X])
 
         #now add our target to the covars- so we have a neat object to work with
         X[model_var] = target
         
         #--------------- modelling---------------------------------------------------
         # fit rolling annuals to remove some of the IAV (controllable)
-        # df = X.rolling(year=rolling, min_periods=rolling).mean().to_dataframe().dropna()
-        X['year'] = [datetime.strptime(f'{int(y)} 1', '%Y %j') for y in X['year']]
-        df = X.resample(year=f'{rolling}YE').mean().to_dataframe().dropna()
+        df = X.rolling(year=rolling, min_periods=rolling).mean().to_dataframe().dropna()
+        # X['year'] = [datetime.strptime(f'{int(y)} 1', '%Y %j') for y in X['year']]
+        # df = X.resample(year=f'{rolling}YE').mean().to_dataframe().dropna()
+        
+        # Optionally replace with detrended data
+        if detrend_data:
+            for v in [model_var]+modelling_vars:
+                df[f'{v}'] = detrend(df[v])
 
-        #fit a model with all vars
+        # fit a model with all vars
         x = df[modelling_vars]
         y = df[model_var]        
         
         if model_type=='ML':
-            #fit a RF model with all vars
-            rf = RandomForestRegressor(n_estimators=100).fit(x, y)
+            #fit a ML model with all vars
+            # model = LGBMRegressor(random_state=1,verbose=-1, n_estimators=150).fit(x, y)
+            model = RandomForestRegressor(n_estimators=100, random_state=1).fit(x, y)
             
             # use SHAP to extract importance
-            explainer = shap.Explainer(rf)
+            explainer = shap.Explainer(model)
             shap_values = explainer(x)
             
             #get SHAP values into a neat DF
@@ -302,7 +314,7 @@ def calculate_beta(
     target,
     X,
     model_var='NDVI',
-    modelling_vars=['srad','co2','rain','tavg','vpd','cwd']
+    modelling_vars=['srad','rain','tavg','vpd','cwd'],
 ):
     """
     Following Zhan et al. (2024):
@@ -331,10 +343,9 @@ def calculate_beta(
         lon = target.longitude.item()
     
         # summarise climate data.
-        co2 = X['co2'].groupby('time.year').mean()
         rain = X['rain'].groupby('time.year').sum()
-        X = X.drop_vars(['rain', 'co2']).groupby('time.year').mean()
-        X = xr.merge([co2.to_dataset(), rain.to_dataset(), X])
+        X = X.drop_vars(['rain']).groupby('time.year').mean()
+        X = xr.merge([rain.to_dataset(), X])
     
         #now add our target to the covars
         X[model_var] = target
@@ -342,7 +353,11 @@ def calculate_beta(
         #--------------- modelling---------------------------------------------------
         # convert to df
         df = X.to_dataframe().dropna()
-    
+        
+        # seperate CO2
+        co2 = df['co2']
+        df = df.drop('co2', axis=1)
+        
         #step 1 & 2
         for v in [model_var]+modelling_vars:
             df[f'{v}_detrend'] = detrend(df[v])
@@ -352,7 +367,7 @@ def calculate_beta(
         x = df[[x+'_detrend' for x in modelling_vars]]
         xx = df[modelling_vars]
         y = df[model_var+'_detrend']
-        rf = RandomForestRegressor(n_estimators=100).fit(x, y)
+        rf = RandomForestRegressor(n_estimators=100, random_state=1).fit(x, y)
         
         # step 4
         ## predict using original climate data (add suffix to trick scikit learn)
@@ -360,19 +375,19 @@ def calculate_beta(
     
         #step 5
         df[model_var+'_residual'] = df[model_var] - df[model_var+'_predict']
-        df[model_var+'_residual_percent'] = df[model_var+'_residual']/df[model_var][0:3].mean()
-    
+        df[model_var+'_residual_percent'] = df[model_var+'_residual']/df[model_var][0:5].mean()
+        
         #step 6
-        #find robust regression slope
-        beta  = theilslopes(y=df[model_var+'_residual'], x=df['co2']).slope
-        beta_relative = theilslopes(y=df[model_var+'_residual_percent'], x=df['co2']).slope * 100 * 100
-        pvalue = kendalltau(y=df[model_var+'_residual'], x=df['co2']).pvalue
+        # find robust regression slope
+        beta  = theilslopes(y=df[model_var+'_residual'], x=co2).slope
+        beta_relative = theilslopes(y=df[model_var+'_residual_percent'], x=co2).slope * 100 * 100
+        pvalue = kendalltau(y=df[model_var+'_residual'], x=co2).pvalue
 
-        #export values as xarray
+        # export values as xarray
         dff = pd.DataFrame({'beta':beta, 'beta_relative':beta_relative, 'pvalue':pvalue}, index=[0])
         ds = dff.to_xarray().squeeze().drop_vars('index')
         ds = ds.expand_dims(latitude=[lat],longitude=[lon])
-          
+
     return ds.astype('float32')
 
 

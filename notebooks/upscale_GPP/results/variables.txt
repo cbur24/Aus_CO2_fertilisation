@@ -1,1 +1,1 @@
-kNDVI_RS,kNDVI_anom_RS,f_total_RS,trees_RS,grass_RS,bare_RS,C4_grass_RS,rain_RS,rain_cml3_RS,rain_anom_RS,rain_cml3_anom_RS,rain_cml6_anom_RS,rain_cml12_anom_RS,srad_RS,srad_anom_RS,tavg_RS,tavg_anom_RS,vpd_RS,vpd_anom_RS,VegH_RS,site,
+kNDVI_RS,kNDVI_anom_RS,fPAR_RS,trees_RS,grass_RS,bare_RS,C4_grass_RS,rain_RS,rain_cml3_RS,rain_cml6_RS,rain_anom_RS,rain_cml3_anom_RS,rain_cml6_anom_RS,rain_cml12_anom_RS,srad_RS,srad_anom_RS,tavg_RS,tavg_anom_RS,vpd_RS,vpd_anom_RS,VegH_RS,site,

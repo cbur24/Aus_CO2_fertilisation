@@ -31,10 +31,10 @@ from _utils import round_coords
 n_workers=102
 memory_limit='300GiB'
 modelling_vars=['co2', 'srad', 'rain', 'tavg', 'vpd', 'cwd']
-results_path = '/g/data/os22/chad_tmp/Aus_CO2_fertilisation/results/tiles/AusEFlux_GPP_1982_2022/'
+results_path = '/g/data/os22/chad_tmp/Aus_CO2_fertilisation/results/tiles/NDVI_1982_2022/'
 template_path='/g/data/os22/chad_tmp/Aus_CO2_fertilisation/data/templates/'
-model_var='GPP' #NDVI GPP
-model_types = ['delta_slope', 'PLS', 'ML']
+model_var='NDVI' #NDVI GPP
+model_types = ['PLS', 'delta_slope', 'ML']
 # ------------------------------------------------
 
 n = os.getenv('TILENAME')
@@ -100,12 +100,12 @@ def attribution_etal(
         trends = assign_crs(trends, crs='EPSG:4326')
         trends.transpose().to_netcdf(f'{results_path}{model_var}_trends_perpixel_{n}.nc')
 
-    # -----calculate CO2 beta coefficients iterate-------------------------------
+    # -----calculate CO2 beta coefficients-------------------------------
     if os.path.exists(f'{results_path}beta_coefficient_perpixel_{n}.nc'):
         pass
     
     else:
-        beta = []    
+        beta = []
         for i in range(shape[1]): #loop through all spatial indexes.
             #select pixel
             data = Y.isel(spatial=i)
@@ -115,8 +115,7 @@ def attribution_etal(
             
             fi = calculate_beta(data,
                                X=dd.sel(latitude=lat, longitude=lon),
-                               model_var=model_var,
-                               modelling_vars=modelling_vars,
+                               model_var=model_var
                               )
             beta.append(fi)
         
@@ -153,6 +152,39 @@ def attribution_etal(
             p_attribution = dask.compute(p_attribution)[0]
             p_attribution = xr.combine_by_coords(p_attribution).astype('float32')
             p_attribution.to_netcdf(f'{results_path}attribution_{model_type}_perpixel_{n}.nc')
+
+    # -----regression attribution for climate only -------------------------------
+    # This is so we can divide Aus into water-limited and light-limited regions
+    for model_type in ['PLS']: 
+        
+        if os.path.exists(f'{results_path}attribution_resource_limitation_perpixel_{n}.nc'):
+            pass
+        else:
+            modelling_vars_trimmed=['srad','rain','tavg','vpd','cwd']
+            regress_template = xr.open_dataset(f'{template_path}template_{model_type}.nc').sel(feature=modelling_vars_trimmed)
+        
+            p_attribution = []    
+            for i in range(shape[1]): #loop through all spatial indexes.
+                #select pixel
+                data = Y.isel(spatial=i)
+                
+                lat = data.latitude.item()
+                lon = data.longitude.item()
+                
+                fi = regression_attribution(data,
+                                   X=dd.sel(latitude=lat, longitude=lon),
+                                   template=regress_template,
+                                   model_type=model_type,
+                                   model_var=model_var,
+                                   rolling=1, #no smoothing
+                                   detrend_data=True, #fit only on IAV
+                                   modelling_vars=modelling_vars_trimmed
+                                  )
+                p_attribution.append(fi)
+            
+            p_attribution = dask.compute(p_attribution)[0]
+            p_attribution = xr.combine_by_coords(p_attribution).astype('float32')
+            p_attribution.to_netcdf(f'{results_path}attribution_resource_limitation_perpixel_{n}.nc')
 
 #run function
 if __name__ == '__main__':
